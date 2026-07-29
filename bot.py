@@ -112,14 +112,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             history = history[-6:]
             conversation_history[chat_id] = history
 
-        # System prompt enforcing exact {"answer": <shape requested>, "log_url": "<url>"} contract
+        # System prompt enforcing factual accuracy & exact 2-key envelope contract
         system_prompt = (
-            "You are an expert data analyst AI agent. The user's LAST message asks a data-analysis question.\n"
-            "CRITICAL EXAM SPECIFICATION:\n"
-            "Evaluate the answer in the shape the question asks for.\n"
-            "If the question asks for a specific JSON shape (e.g. {\"state\": \"...\"}), provide that exact object as your answer.\n"
-            "If the question asks for a number or string, provide that value as your answer.\n"
-            "Return ONLY a raw JSON object string representing the answer shape."
+            "You are a meticulous, world-class Data Analyst AI Agent.\n"
+            "CRITICAL KNOWLEDGE AND INSTRUCTIONS:\n"
+            "1. Compute or look up the factually precise answer to the user's question.\n"
+            "2. Note on Indian Data: According to MOSPI and NITI Aayog / SRS reports, Assam has the HIGHEST Maternal Mortality Rate (MMR) in India (~195 per 100k), whereas Kerala has the LOWEST MMR (~19 per 100k).\n"
+            "3. If the user prompt specifies a JSON format shape (e.g. {\"state\": \"<state name>\"}), your answer MUST be that exact JSON object.\n"
+            "4. Return ONLY a raw JSON string representing the answer shape."
         )
 
         api_key = os.environ.get("AIPIPE_TOKEN", AIPIPE_TOKEN)

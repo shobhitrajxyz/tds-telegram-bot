@@ -112,15 +112,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             history = history[-6:]
             conversation_history[chat_id] = history
 
-        # System prompt instructing strict output schema matching
+        # System prompt enforcing exact {"answer": <shape requested>, "log_url": "<url>"} contract
         system_prompt = (
-            "You are an expert data analyst AI agent. The user's LAST message asks a data-analysis "
-            "question and specifies a required JSON output shape.\n"
-            "CRITICAL INSTRUCTIONS:\n"
-            "1. Compute or evaluate the precise answer to the user's question.\n"
-            "2. Return ONLY a single raw JSON object matching PRECISELY the requested keys in the user prompt.\n"
-            "3. Do NOT include markdown formatting, code block fences (no ```json), explanations, or extra commentary.\n"
-            "4. Do NOT add extra keys (such as 'log_url' or 'explanation') UNLESS the user's prompt explicitly asks for them."
+            "You are an expert data analyst AI agent. The user's LAST message asks a data-analysis question.\n"
+            "CRITICAL EXAM SPECIFICATION:\n"
+            "Evaluate the answer in the shape the question asks for.\n"
+            "If the question asks for a specific JSON shape (e.g. {\"state\": \"...\"}), provide that exact object as your answer.\n"
+            "If the question asks for a number or string, provide that value as your answer.\n"
+            "Return ONLY a raw JSON object string representing the answer shape."
         )
 
         api_key = os.environ.get("AIPIPE_TOKEN", AIPIPE_TOKEN)
@@ -139,18 +138,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cleaned_text = clean_json_string(raw_llm_reply)
 
         try:
-            parsed_json = json.loads(cleaned_text)
-            if not isinstance(parsed_json, dict):
-                parsed_json = {"result": parsed_json}
-        except Exception as json_err:
-            logger.warning(f"Failed to parse JSON directly: {json_err}, raw: {raw_llm_reply}")
-            parsed_json = {"answer": cleaned_text}
+            parsed_answer = json.loads(cleaned_text)
+        except Exception:
+            parsed_answer = cleaned_text
 
-        # If log_url is requested or if prompt mentions log_url, inject it
-        if "log_url" in user_text.lower() or "logurl" in user_text.lower():
-            parsed_json["log_url"] = LOG_URL
+        # Construct exact 2-key contract envelope: {"answer": ..., "log_url": ...}
+        envelope = {
+            "answer": parsed_answer,
+            "log_url": LOG_URL
+        }
 
-        final_reply = json.dumps(parsed_json)
+        final_reply = json.dumps(envelope)
 
         # Update conversation history with assistant response
         history.append({"role": "assistant", "content": final_reply})
@@ -168,7 +166,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Unhandled error in handle_message: {e}", exc_info=True)
         try:
-            fallback = json.dumps({"error": str(e)})
+            fallback = json.dumps({
+                "answer": {"error": str(e)},
+                "log_url": LOG_URL
+            })
             if update.message:
                 await update.message.reply_text(fallback)
         except Exception as send_err:

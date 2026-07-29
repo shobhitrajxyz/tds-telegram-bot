@@ -1,0 +1,13 @@
+services:
+  - type: worker
+    name: tds-telegram-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: AIPIPE_TOKEN
+        sync: false
+      - key: LOG_URL
+        value: https://raw.githubusercontent.com/shobhitrajxyz/tds-telegram-bot/main/run.jsonl

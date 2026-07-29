@@ -3,6 +3,8 @@ import sys
 import time
 import json
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from openai import OpenAI
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
@@ -22,6 +24,26 @@ LOG_URL = os.environ.get(
     "https://raw.githubusercontent.com/shobhitrajxyz/tds-telegram-bot/main/run.jsonl"
 )
 LOG_FILE = "run.jsonl"
+
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """Simple HTTP server to pass Render Web Service health checks."""
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK - TDS Telegram Bot is running live!")
+
+    def log_message(self, format, *args):
+        return  # Suppress standard HTTP request logging
+
+
+def start_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    logger.info(f"Health check HTTP server listening on port {port}")
+    server.serve_forever()
+
 
 # OpenAI client pointing to AIPipe proxy
 client = None
@@ -143,6 +165,9 @@ def main():
     if not token:
         logger.error("TELEGRAM_BOT_TOKEN environment variable is missing!")
         sys.exit(1)
+
+    # Start health check server in background thread for Render Web Service compatibility
+    threading.Thread(target=start_health_check_server, daemon=True).start()
 
     app = ApplicationBuilder().token(token).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

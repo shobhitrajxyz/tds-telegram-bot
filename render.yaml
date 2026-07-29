@@ -1,9 +1,10 @@
 services:
-  - type: worker
+  - type: web
     name: tds-telegram-bot
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
+    plan: free
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false

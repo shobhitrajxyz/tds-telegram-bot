@@ -3,9 +3,10 @@ import sys
 import time
 import json
 import logging
+import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from openai import OpenAI
+from openai import AsyncOpenAI
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 
@@ -46,7 +47,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"OK")
 
     def log_message(self, format, *args):
-        return  # Suppress HTTP request logs to keep terminal/logs clean
+        return  # Suppress HTTP request logs to keep logs clean
 
 
 def start_health_check_server():
@@ -111,24 +112,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             history = history[-6:]
             conversation_history[chat_id] = history
 
+        # System prompt instructing strict output schema matching
         system_prompt = (
             "You are an expert data analyst AI agent. The user's LAST message asks a data-analysis "
             "question and specifies a required JSON output shape.\n"
-            "Instructions:\n"
+            "CRITICAL INSTRUCTIONS:\n"
             "1. Compute or evaluate the precise answer to the user's question.\n"
-            "2. Return ONLY a single raw JSON object matching the requested schema.\n"
+            "2. Return ONLY a single raw JSON object matching PRECISELY the requested keys in the user prompt.\n"
             "3. Do NOT include markdown formatting, code block fences (no ```json), explanations, or extra commentary.\n"
-            "4. Include a key 'log_url' in your JSON object."
+            "4. Do NOT add extra keys (such as 'log_url' or 'explanation') UNLESS the user's prompt explicitly asks for them."
         )
 
         api_key = os.environ.get("AIPIPE_TOKEN", AIPIPE_TOKEN)
-        openai_client = OpenAI(
+        async_client = AsyncOpenAI(
             base_url="https://aipipe.org/openai/v1",
             api_key=api_key
         )
 
-        response = openai_client.chat.completions.create(
-            model="gpt-5-mini",
+        # Async non-blocking LLM call
+        response = await async_client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[{"role": "system", "content": system_prompt}] + history,
             timeout=45.0
         )
@@ -143,8 +146,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Failed to parse JSON directly: {json_err}, raw: {raw_llm_reply}")
             parsed_json = {"answer": cleaned_text}
 
-        # Inject mandatory log_url field
-        parsed_json["log_url"] = LOG_URL
+        # If log_url is requested or if prompt mentions log_url, inject it
+        if "log_url" in user_text.lower() or "logurl" in user_text.lower():
+            parsed_json["log_url"] = LOG_URL
+
         final_reply = json.dumps(parsed_json)
 
         # Update conversation history with assistant response
@@ -163,10 +168,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Unhandled error in handle_message: {e}", exc_info=True)
         try:
-            fallback = json.dumps({
-                "error": str(e),
-                "log_url": LOG_URL
-            })
+            fallback = json.dumps({"error": str(e)})
             if update.message:
                 await update.message.reply_text(fallback)
         except Exception as send_err:
